@@ -1,139 +1,75 @@
-# 🚀 HR Messages - Advanced HR Outreach Generator
+# HR Messages: Resume Parsing and Recruiter Outreach Generator
 
-[![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://python.org)
-[![Streamlit](https://img.shields.io/badge/Streamlit-1.37+-red.svg)](https://streamlit.io)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
+[![Streamlit](https://img.shields.io/badge/Streamlit-1.37+-FF4B4B?style=flat-square&logo=streamlit&logoColor=white)](https://streamlit.io)
+[![SQLite](https://img.shields.io/badge/SQLite-003B57?style=flat-square&logo=sqlite&logoColor=white)](https://sqlite.org)
+[![Groq](https://img.shields.io/badge/Groq-Llama_3.1_70B-F55036?style=flat-square)](https://groq.com)
+[![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white)](Dockerfile)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 
-An intelligent Streamlit application that helps HR professionals and job seekers by analyzing resumes, matching them with job descriptions, and generating personalized outreach messages using AI.
+A Streamlit app for job seekers. Upload a resume (TXT or PDF), and the app extracts contact details, skills and recent roles with rule-based parsing, stores the result in SQLite, asks an LLM on Groq to score the resume against a pasted job description, and drafts a recruiter outreach email in a chosen tone and length. Without an API key it still runs, using fixed placeholder analysis and a template-based message.
 
-## ✨ Features
+## Problem
 
-### 📄 **Resume Processing**
-- **Smart Parsing**: Upload and parse PDF/TXT resumes with intelligent data extraction
-- **Contact Extraction**: Automatically extracts name, email, phone from resumes
-- **Skills Detection**: Identifies technical and soft skills (30+ technical, 15+ soft skills)
-- **Experience Analysis**: Extracts work experience, job titles, and company information
+Writing a tailored note to a recruiter for every application is repetitive: the same contact details, the same handful of skills, a different company and role each time. This app keeps the parsed resume in one place and turns a job description plus a company and contact name into an editable first draft.
 
-### 🔍 **Job Match Analysis**
-- **AI-Powered Matching**: Analyze how well a resume matches a job description
-- **Match Scoring**: Get detailed match scores and alignment analysis
-- **Keyword Suggestions**: Receive intelligent keyword recommendations
-- **Strengths & Weaknesses**: Identify candidate strengths and areas for improvement
+## How it works
 
-### 💬 **Personalized Message Generation**
-- **Custom Messages**: Generate personalized HR outreach messages
-- **Multiple Tones**: Professional, Enthusiastic, Confident, Friendly
-- **Length Options**: Short, Medium, Long message formats
-- **Real Data Integration**: Uses actual resume data (name, email, phone)
-- **Download Options**: Export messages as TXT or DOC files
-
-### 🔎 **Advanced Search**
-- **Semantic Search**: AI-powered resume search using vector embeddings
-- **Keyword Search**: Fallback keyword-based search
-- **Database Management**: View, manage, and search stored resumes
-- **Duplicate Detection**: Prevents duplicate resume uploads
-
-## 🏗️ **Architecture**
-
-### **Production-Ready Design**
-- **Modular Architecture**: Clean separation of concerns
-- **Database Management**: SQLite with connection pooling
-- **Error Handling**: Comprehensive error management and logging
-- **Security**: File validation, input sanitization, SQL injection prevention
-- **Performance**: Optimized queries, caching, memory management
-
-### **Components**
-- **DatabaseManager**: Production-ready database operations
-- **ResumeParser**: Enhanced resume parsing with validation
-- **LLMHandler**: AI integration with fallback responses
-- **Security**: File validation and input sanitization
-
-## 🚀 **Quick Start**
-
-### **Prerequisites**
-- Python 3.8+
-- Streamlit
-- Optional: Groq API key for enhanced AI features
-
-### **Installation**
-
-1. **Clone the repository**
-   ```bash
-   git clone <your-repo-url>
-   cd hr-messages
-   ```
-
-2. **Create virtual environment**
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-   ```
-
-3. **Install dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **Run the application**
-   ```bash
-   streamlit run app_improved.py
-   ```
-
-5. **Access the application**
-   ```
-   http://localhost:8501
-   ```
-
-## 🔧 **Configuration**
-
-### **Environment Variables**
-Create a `.env` file with:
-```bash
-GROQ_API_KEY=your_groq_api_key_here  # Optional, for enhanced AI
-DB_PATH=resume_vectors.db            # Database file path
-LOG_LEVEL=INFO                       # Logging level
-MAX_FILE_SIZE=10485760              # 10MB file size limit
+```mermaid
+flowchart LR
+    U[Resume upload<br/>TXT or PDF] --> V[Validate<br/>10 MB limit, MIME type]
+    V --> H[SHA-256 hash]
+    H --> P[Rule-based parser<br/>regex and keyword lists]
+    P --> DB[(SQLite<br/>resumes table)]
+    P --> S[Session state]
+    JD[Job description] --> A[Match analysis prompt]
+    S --> A
+    A --> G{GROQ_API_KEY set?}
+    G -- yes --> L[Groq chat completions<br/>llama-3.1-70b-versatile]
+    G -- no --> F[Fallback<br/>fixed JSON or template]
+    L --> R[Match score, alignments,<br/>gaps, keywords]
+    F --> R
+    R --> M[Message prompt<br/>tone, length, options]
+    S --> M
+    M --> G2{GROQ_API_KEY set?}
+    G2 -- yes --> L2[Groq LLM]
+    G2 -- no --> T[Template message]
+    L2 --> O[Editable draft<br/>download TXT or DOC]
+    T --> O
+    DB --> Q[Keyword search<br/>SQL LIKE]
 ```
 
-### **Optional Dependencies**
-The app works with or without these optional dependencies:
-- **ChromaDB**: For advanced semantic search
-- **SentenceTransformers**: For embedding generation
-- **pdfplumber**: For PDF resume parsing
+The main app is `app_improved.py`, organized as four tabs.
 
-## 📱 **Usage**
+**Upload Resume.** The file is checked for size (10 MB) and MIME type, hashed with SHA-256, and decoded (UTF-8 with a Latin-1 fallback for text, `pdfplumber` for PDF). `ResumeParser` then extracts:
 
-### **1. Upload Resume**
-- Upload PDF or TXT resume files
-- Automatic parsing extracts contact info, skills, and experience
-- Data is stored in the local database with duplicate detection
+- email and phone with regular expressions
+- a name, taken as the first line in the top 15 that has two to four words and no digits, `@` or parentheses
+- up to five roles, from lines containing one of 13 job keywords such as engineer, analyst or consultant, with the next line read as the company
+- skills, by substring match against 42 technical and 19 soft-skill keywords
 
-### **2. Analyze Job Match**
-- Paste job description
-- Enter company and HR contact details
-- Get match score and detailed analysis
-- Receive keyword suggestions
+The parsed record is written to SQLite. A unique index on the file hash rejects re-uploads of the same file.
 
-### **3. Generate Custom Messages**
-- Choose message tone and length
-- Customize with additional keywords
-- Generate personalized messages using your actual resume data
-- Download as TXT or DOC files
+**Analyze Match.** The parsed resume and the job description go to Groq in a prompt that asks for JSON with `match_score`, `key_alignments`, `missing_skills`, `strengths`, `recommended_focus` and `keyword_suggestions`. If the reply is not valid JSON, the app substitutes default values.
 
-### **4. Search Resumes**
-- Use semantic search to find relevant candidates
-- Search by skills, roles, or company names
-- View detailed candidate information
+**Generate Message.** Tone (Professional, Enthusiastic, Confident, Friendly), length (short, medium, long), optional portfolio, availability and salary mentions, custom keywords and a custom opening line are combined with the parsed resume and the match analysis into one prompt. `[Your Name]`, `[Your Email]` and `[Your Phone]` placeholders in the reply are replaced with the parsed values. The draft is editable and downloadable as `.txt` or `.doc` (the `.doc` file is plain text with a Word MIME type).
 
-## 🛡️ **Security Features**
+**Search Resumes.** A case-insensitive substring search (`LIKE '%query%'`) over the stored resume JSON, returning 1 to 20 results with a 400-character snippet.
 
-- **File Upload Protection**: Size limits, type validation, content scanning
-- **SQL Injection Prevention**: Parameterized queries throughout
-- **Input Sanitization**: All user inputs properly validated
-- **Error Information Protection**: No internal details exposed
-- **Duplicate Detection**: SHA-256 hash-based duplicate prevention
+The sidebar takes a Groq API key (stored for the session in `GROQ_API_KEY`), shows resume count, uploads in the last 30 days and database size, and offers a clear-database action behind a confirmation step.
 
-## 📊 **Database Schema**
+## Behavior without an API key
+
+`LLMHandler` falls back whenever no key is set or the API call fails or times out (30 seconds):
+
+| Step | Fallback output |
+|---|---|
+| Match analysis | A fixed JSON object with `match_score` 85 and generic alignments. It does not read the resume or job description. |
+| Message generation | A template email built from the company, contact, skills and role in the prompt. Enthusiastic and Confident get their own opening line; Professional and Friendly share one. |
+
+Treat match scores in demo mode as placeholders, not results.
+
+## Database schema
 
 ```sql
 CREATE TABLE resumes (
@@ -150,111 +86,86 @@ CREATE TABLE resumes (
 );
 ```
 
-## 🚀 **Deployment**
+Indexes are created on `name`, `email`, `created_at` and `file_hash`. All queries are parameterized. Each operation opens and closes its own connection through a context manager.
 
-### **Local Development**
+## Run it
+
+Requires Python 3.12 (`pyproject.toml`), or install from `requirements.txt` on a recent Python 3.
+
 ```bash
+git clone https://github.com/Jaswanthnani02/hr-messages.git
+cd hr-messages
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -r requirements.txt  # or: uv sync
+export GROQ_API_KEY=...          # optional; or paste the key in the sidebar
 streamlit run app_improved.py
 ```
 
-### **Docker Deployment**
+Open http://localhost:8501.
+
+`app_improved.py` does not load `.env` itself. Set `GROQ_API_KEY` in the shell, in the sidebar, or through `docker-compose.yml`, which passes it from your environment.
+
+`simple_app.py` is a smaller version with two tabs (upload, view), TXT parsing only, a shorter keyword list, and no LLM calls.
+
+### Docker
+
+The `Dockerfile`, `run_app.py`, `run_streamlit.py`, `run.bat` and `DEPLOYMENT.md` all start `advanced_app.py`, which is not in this repository. Until they are updated, override the command:
+
 ```bash
-# Build and run with Docker Compose
-docker-compose -f docker-compose.production.yml up -d
+docker build -t hr-messages .
+docker run -p 8501:8501 -e GROQ_API_KEY=... hr-messages \
+  streamlit run app_improved.py --server.port=8501 --server.address=0.0.0.0
 ```
 
-### **Production Deployment**
-```bash
-# Use the deployment script
-python deploy_improved.py
-```
+The image is `python:3.12-slim` and does not install `curl`, so the `HEALTHCHECK` will report unhealthy even when the app is up.
 
-## 📈 **Performance Features**
+### deploy_improved.py
 
-- **Database Optimization**: Proper indexing and query optimization
-- **Memory Management**: File size limits and efficient processing
-- **Caching**: Intelligent caching with Streamlit
-- **Connection Pooling**: Efficient database connections
-- **Error Recovery**: Graceful degradation when components fail
+Installs five core packages and generates production files that are not committed: `data/`, `logs/`, `backups/` and `config/` directories, `.env.production`, `start_production.sh`, `Dockerfile.production`, `docker-compose.production.yml` and `monitor.py`. It also rewrites `logging.conf`. The generated `monitor.py` deletes resumes older than one year and vacuums the database, so read it before scheduling it.
 
-## 🔍 **Monitoring & Debugging**
+## Configuration
 
-### **Health Checks**
-- Database connectivity and performance
-- File system operations
-- API connectivity
-- Resource usage monitoring
+Values live in the `AppConfig` dataclass in `app_improved.py`:
 
-### **Logging**
-- Comprehensive logging system
-- Different log levels (INFO, WARNING, ERROR)
-- File and console logging
-- Debug information for troubleshooting
+| Setting | Value |
+|---|---|
+| `db_path` | `resume_vectors.db` |
+| `groq_api_url` | `https://api.groq.com/openai/v1/chat/completions` |
+| `model` | `llama-3.1-70b-versatile` |
+| `max_tokens` | 1500 |
+| `temperature` | 0.7 |
+| `max_file_size` | 10 MB |
+| `allowed_file_types` | `txt`, `pdf` |
 
-## 📋 **API Integration**
+Only `GROQ_API_KEY` is read from the environment. `DB_PATH` and `LOG_LEVEL` in `env.example` are used by Docker Compose and the deploy script, not by the app. If Groq has retired the configured model ID, change `model` to a current one.
 
-### **Groq LLM Integration**
-- **Enhanced AI Features**: When API key is provided
-- **Fallback Responses**: Demo mode when API unavailable
-- **Error Handling**: Robust API error management
-- **Rate Limiting**: Proper API usage management
+## Repository structure
 
-## 🧪 **Testing**
+| Path | Purpose |
+|---|---|
+| `app_improved.py` | Main Streamlit app: parser, SQLite manager, Groq client with fallbacks, four-tab UI |
+| `simple_app.py` | Minimal version without LLM or PDF support |
+| `run_app.py`, `run_streamlit.py`, `run.bat` | Launchers (currently point to the missing `advanced_app.py`) |
+| `deploy_improved.py` | Generates production config, Docker files and a monitoring script |
+| `Dockerfile`, `docker-compose.yml` | Container build and Compose service with a `./data` volume |
+| `env.example` | Environment variable template |
+| `logging.conf` | Logging config (not loaded by the app, which uses `logging.basicConfig`) |
+| `pyproject.toml`, `uv.lock`, `requirements.txt` | Dependencies |
+| `DEPLOYMENT.md`, `GIT_DEPLOYMENT_GUIDE.md` | Deployment and Git setup notes |
 
-### **Test Files**
-- `test_resume.txt`: Sample resume for testing
-- `monitor.py`: Health check and maintenance script
+## Known limitations
 
-### **Manual Testing**
-1. Upload sample resume
-2. Test job match analysis
-3. Generate custom messages
-4. Test search functionality
-5. Verify database operations
+- Parsing is keyword and regex based. Skill matching is substring based, so short terms such as `go` match inside unrelated words.
+- `chromadb` and `sentence-transformers` are imported when installed but not used; search is keyword only.
+- Match analysis depends on the LLM returning bare JSON. Any surrounding prose sends the app to default values with a score of 80.
+- Resumes, including names, emails and phone numbers, are stored unencrypted in a local SQLite file. Do not run a shared instance with other people's resumes without access control.
+- There are no automated tests.
 
-## 📚 **Documentation**
+## License
 
-- **SENIOR_CODE_REVIEW.md**: Comprehensive code review analysis
-- **FINAL_SUMMARY.md**: Complete improvement summary
-- **DEPLOYMENT.md**: Detailed deployment guide
-- **OPTIMIZATION_SUMMARY.md**: Performance optimization details
-
-## 🤝 **Contributing**
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
-
-## 📄 **License**
-
-This project is open source and available under the [MIT License](LICENSE).
-
-## 🆘 **Support**
-
-### **Common Issues**
-1. **Port already in use**: Use `--server.port 8502`
-2. **Missing dependencies**: Run `pip install -r requirements.txt`
-3. **Database locked**: Restart the application
-4. **API key issues**: Check environment variable configuration
-
-### **Getting Help**
-- Check the documentation files
-- Review error logs
-- Open an issue on GitHub
-- Check the debug features in the application
-
-## 🎯 **Roadmap**
-
-- [ ] **Multi-language Support**: Resume parsing in multiple languages
-- [ ] **Advanced Analytics**: Detailed matching statistics
-- [ ] **Integration APIs**: Connect with job boards and ATS systems
-- [ ] **Machine Learning**: Enhanced matching algorithms
-- [ ] **Cloud Deployment**: AWS, Azure, GCP deployment options
+MIT. See [LICENSE](LICENSE).
 
 ---
 
-**Made with ❤️ for HR professionals and job seekers**
-
-*This application is production-ready with enterprise-grade security, performance, and reliability features.*
+More projects: [github.com/Jaswanthnani02](https://github.com/Jaswanthnani02) · Portfolio: [jaswanthnani02.github.io](https://jaswanthnani02.github.io)
